@@ -1,0 +1,59 @@
+name: Update covers
+
+on:
+  workflow_dispatch:
+
+jobs:
+  covers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Copy covers and update DB
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: 151.241.234.248
+          username: dreamwallet
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+
+            BLOG_DIR=/home/dreamwallet/projects/multy-blog
+            ARTIST_DIR=/home/openclaw/.openclaw/workspace-artist
+            UPLOADS_DIR=$BLOG_DIR/public/uploads
+
+            mkdir -p $UPLOADS_DIR
+
+            echo "📂 Copying cover images..."
+            cp $ARTIST_DIR/2026-03-06-game-cover-1.png $UPLOADS_DIR/cover-ii-agent.png
+            cp $ARTIST_DIR/2026-03-06-game-cover-2.png $UPLOADS_DIR/cover-contentnaya-voronka.png
+            cp $ARTIST_DIR/2026-03-06-game-cover-3.png $UPLOADS_DIR/cover-mini-app.png
+
+            echo "🗄️ Updating DB..."
+            source $BLOG_DIR/.env
+
+            psql "$DATABASE_URL" << 'SQL'
+              UPDATE "Article" SET
+                "coverImage" = '/uploads/cover-ii-agent.png',
+                "coverImageUrl" = '/uploads/cover-ii-agent.png',
+                published = true,
+                "publishedAt" = COALESCE("publishedAt", NOW())
+              WHERE slug = 'ii-agent-vmesto-menedzhera-telegram-bot-chatgpt-prodazhi';
+
+              UPDATE "Article" SET
+                "coverImage" = '/uploads/cover-contentnaya-voronka.png',
+                "coverImageUrl" = '/uploads/cover-contentnaya-voronka.png',
+                published = true,
+                "publishedAt" = COALESCE("publishedAt", NOW())
+              WHERE slug = 'contentnaya-voronka-telegram-kanal-mashina-prodazh';
+
+              UPDATE "Article" SET
+                "coverImage" = '/uploads/cover-mini-app.png',
+                "coverImageUrl" = '/uploads/cover-mini-app.png',
+                published = true,
+                "publishedAt" = COALESCE("publishedAt", NOW())
+              WHERE slug = 'telegram-mini-app-magazin-zapis-uslugi-bez-mobilnogo';
+
+              SELECT slug, "coverImage", published FROM "Article" ORDER BY "publishedAt" DESC;
+SQL
+
+            echo "✅ Done!"
