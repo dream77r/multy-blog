@@ -121,7 +121,24 @@ export default async function ArticlePage({ params }: Props) {
           <div className="cta-inner">
             <div className="cta-brand">Multy.ai</div>
             <div className="cta-text">AI-автоматизация для вашего бизнеса</div>
-            <a href="https://multy.ai" target="_blank" rel="noopener noreferrer" className="cta-btn">Узнать больше →</a>
+            <div className="cta-buttons">
+              <a
+                href={`https://t.me/MultyBoost_bot?start=${article.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="cta-btn cta-btn-primary"
+              >
+                🤖 Попробовать бота
+              </a>
+              <a
+                href={`https://multy.ai?utm_source=blog&utm_medium=article&utm_campaign=${article.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="cta-btn cta-btn-secondary"
+              >
+                Узнать больше →
+              </a>
+            </div>
           </div>
         </div>
       </article>
