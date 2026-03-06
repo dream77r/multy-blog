@@ -9,27 +9,24 @@ jobs:
   covers:
     runs-on: ubuntu-latest
     steps:
-      - name: Check backups
+      - name: Check WAL and shared
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: 151.241.234.248
           username: dreamwallet
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 5m
+          command_timeout: 3m
           script: |
-            echo "=== pg_dump backups ==="
-            find /home/dreamwallet /var/backups /tmp -name "*.sql" -o -name "*.dump" -o -name "*multy*backup*" 2>/dev/null | head -10
-
-            echo "=== DB content check ==="
             source /home/dreamwallet/projects/multy-blog/.env
-            psql "$DATABASE_URL" -c "SELECT slug, length(content) as content_len, LEFT(content,100) as preview FROM \"Article\" ORDER BY \"publishedAt\" DESC NULLS LAST;"
+            echo "=== pg_wal check ==="
+            psql "$DATABASE_URL" -c "SELECT pg_walfile_name(pg_current_wal_lsn());" 2>/dev/null || true
 
-            echo "=== pg_wal / pg_basebackup check ==="
-            find /var/lib/postgresql -name "*.sql" 2>/dev/null | head -5 || true
+            echo "=== Check if articles had content before (pg_stat) ==="
+            psql "$DATABASE_URL" -c "SELECT slug, \"createdAt\", \"updatedAt\", length(content) FROM \"Article\" ORDER BY \"updatedAt\";" 2>/dev/null
 
-            echo "=== git log ==="
-            cd /home/dreamwallet/projects/multy-blog && git log --oneline -10
+            echo "=== shared on VPS 100.113.28.78 - skip (different server) ==="
+            echo "=== check /home/openclaw/shared ==="
+            ls /home/openclaw/.openclaw/shared/ 2>/dev/null | head -20 || echo "no access"
 
-            echo "=== shared dir on this server ==="
-            ls ~/.openclaw/shared/ 2>/dev/null || echo "no shared dir"
-            ls /home/openclaw/.openclaw/shared/ 2>/dev/null | head -10 || echo "no openclaw shared"
+            echo "=== find any md/txt article files ==="
+            find /home/dreamwallet /home/openclaw -name "*.md" -newer /home/dreamwallet/projects/multy-blog/.env 2>/dev/null | grep -v "node_modules\|\.git" | head -10 || true
