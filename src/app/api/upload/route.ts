@@ -28,22 +28,18 @@ export async function POST(request: NextRequest) {
 
   const ext = extname(file.name) || ".jpg";
   const filename = `${randomUUID()}${ext}`;
-  // In standalone mode, serve from .next/standalone/public/
-  const standaloneUploads = join(process.cwd(), ".next", "standalone", "public", "uploads")
-  const regularUploads = join(process.cwd(), "public", "uploads")
-  const uploadsDir = regularUploads;
+
+  // Use UPLOAD_DIR env var for persistent storage (e.g., /home/dreamwallet/projects/multy-blog/public/uploads)
+  // Falls back to public/uploads relative to cwd
+  const uploadsDir = process.env.UPLOAD_DIR
+    ? process.env.UPLOAD_DIR
+    : join(process.cwd(), "public", "uploads");
 
   await mkdir(uploadsDir, { recursive: true });
 
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
   await writeFile(join(uploadsDir, filename), buffer);
-
-  // Also write to standalone public if it exists
-  try {
-    await mkdir(standaloneUploads, { recursive: true });
-    await writeFile(join(standaloneUploads, filename), buffer);
-  } catch { /* ignore if standalone doesn't exist */ }
 
   return NextResponse.json({ url: `/uploads/${filename}` });
 }
