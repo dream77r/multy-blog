@@ -29,3 +29,12 @@ body {
 .prose blockquote p { margin: 0; }
 .prose hr { border: none; border-top: 1px solid #e5e7eb; margin: 2.5rem 0; }
 .prose img { border-radius: 0.75rem; max-width: 100%; height: auto; margin: 1.5rem 0; }
+
+/* ToC */
+.toc a { color: #4b5563; text-decoration: none; display: block; padding: 0.1rem 0; }
+.toc a:hover { color: #2563EB; }
+.toc ul { list-style: none; padding-left: 1rem; margin: 0; }
+.toc li { margin: 0.15rem 0; }
+
+/* FAQ details animation */
+details summary::-webkit-details-marker { display: none; }
