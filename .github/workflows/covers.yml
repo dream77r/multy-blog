@@ -9,17 +9,27 @@ jobs:
   covers:
     runs-on: ubuntu-latest
     steps:
-      - name: Update coverImage in DB
+      - name: Check backups
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: 151.241.234.248
           username: dreamwallet
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 2m
+          command_timeout: 5m
           script: |
-            set -e
+            echo "=== pg_dump backups ==="
+            find /home/dreamwallet /var/backups /tmp -name "*.sql" -o -name "*.dump" -o -name "*multy*backup*" 2>/dev/null | head -10
+
+            echo "=== DB content check ==="
             source /home/dreamwallet/projects/multy-blog/.env
-            psql "$DATABASE_URL" -c "UPDATE \"Article\" SET \"coverImage\"='/uploads/28b0d7fd-a5e2-46c2-b903-14ff8379f41a.png', \"coverImageUrl\"='/uploads/28b0d7fd-a5e2-46c2-b903-14ff8379f41a.png' WHERE slug='ii-agent-vmesto-menedzhera-telegram-bot-chatgpt-prodazhi';"
-            psql "$DATABASE_URL" -c "UPDATE \"Article\" SET \"coverImage\"='/uploads/e05b8165-3720-479e-9e24-8ca030d6cf61.png', \"coverImageUrl\"='/uploads/e05b8165-3720-479e-9e24-8ca030d6cf61.png' WHERE slug='contentnaya-voronka-telegram-kanal-mashina-prodazh';"
-            psql "$DATABASE_URL" -c "UPDATE \"Article\" SET \"coverImage\"='/uploads/fcdb075b-98d5-462d-af01-d9b4293e185e.png', \"coverImageUrl\"='/uploads/fcdb075b-98d5-462d-af01-d9b4293e185e.png' WHERE slug='telegram-mini-app-magazin-zapis-uslugi-bez-mobilnogo';"
-            psql "$DATABASE_URL" -c "SELECT slug, \"coverImage\" FROM \"Article\" ORDER BY \"publishedAt\" DESC NULLS LAST;"
+            psql "$DATABASE_URL" -c "SELECT slug, length(content) as content_len, LEFT(content,100) as preview FROM \"Article\" ORDER BY \"publishedAt\" DESC NULLS LAST;"
+
+            echo "=== pg_wal / pg_basebackup check ==="
+            find /var/lib/postgresql -name "*.sql" 2>/dev/null | head -5 || true
+
+            echo "=== git log ==="
+            cd /home/dreamwallet/projects/multy-blog && git log --oneline -10
+
+            echo "=== shared dir on this server ==="
+            ls ~/.openclaw/shared/ 2>/dev/null || echo "no shared dir"
+            ls /home/openclaw/.openclaw/shared/ 2>/dev/null | head -10 || echo "no openclaw shared"
