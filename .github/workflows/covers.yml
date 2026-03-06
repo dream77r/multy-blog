@@ -9,7 +9,7 @@ jobs:
   covers:
     runs-on: ubuntu-latest
     steps:
-      - name: Diagnose and fix
+      - name: Fix covers
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: 151.241.234.248
@@ -17,16 +17,32 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           command_timeout: 5m
           script: |
+            set -e
             BLOG=/home/dreamwallet/projects/multy-blog
-            echo "=== package.json start script ==="
-            cat $BLOG/package.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scripts',{}))"
-            echo "=== .next/standalone exists? ==="
-            ls $BLOG/.next/standalone/ 2>/dev/null | head -5 || echo "NO standalone dir"
-            echo "=== public/ contents ==="
-            ls -la $BLOG/public/
-            echo "=== uploads in public ==="
-            ls $BLOG/public/uploads/ 2>/dev/null | head -10 || echo "no uploads dir in public"
-            echo "=== where does next serve from? ==="
-            ps aux | grep -E "next|node.*server" | grep -v grep | head -5
-            echo "=== find uploaded files ==="
-            find $BLOG -name "*.png" 2>/dev/null | head -10
+            STANDALONE=$BLOG/.next/standalone
+            ARTIST=/home/openclaw/.openclaw/workspace-artist
+
+            echo "1. Fixing standalone public dir..."
+            mkdir -p $STANDALONE/public/uploads
+            mkdir -p $STANDALONE/public/covers
+
+            echo "2. Copying all uploads to standalone..."
+            cp -r $BLOG/public/uploads/* $STANDALONE/public/uploads/ 2>/dev/null || true
+
+            echo "3. Copying cover files from artist dir..."
+            sudo cp $ARTIST/2026-03-06-game-cover-1.png $STANDALONE/public/covers/cover-1.png 2>/dev/null && echo "sudo ok" || {
+              echo "sudo failed - trying world-readable check"
+              stat $ARTIST/2026-03-06-game-cover-1.png 2>/dev/null || echo "no stat access"
+            }
+
+            echo "4. Check what's in standalone public..."
+            ls $STANDALONE/public/
+            ls $STANDALONE/public/uploads/ | head -5
+
+            echo "5. Update DB with existing uploaded files..."
+            source $BLOG/.env
+            psql "$DATABASE_URL" -c "UPDATE \"Article\" SET \"coverImage\"='/uploads/02aff0bd-fc03-47f3-b9b2-cfaa4bed2c1f.png', \"coverImageUrl\"='/uploads/02aff0bd-fc03-47f3-b9b2-cfaa4bed2c1f.png', published=true, \"publishedAt\"=COALESCE(\"publishedAt\",NOW()) WHERE slug='ii-sekretar-telegram-bot-vmesto-menedzhera';"
+            psql "$DATABASE_URL" -c "UPDATE \"Article\" SET \"coverImage\"='/uploads/6f41cb09-652c-41e8-b29c-a4dee2e882e7.png', \"coverImageUrl\"='/uploads/6f41cb09-652c-41e8-b29c-a4dee2e882e7.png', published=true, \"publishedAt\"=COALESCE(\"publishedAt\",NOW()) WHERE slug='telegram-miniapp-dlya-biznesa-bez-razrabotchika';"
+            psql "$DATABASE_URL" -c "UPDATE \"Article\" SET \"coverImage\"='/uploads/4883c4b4-929d-420c-921e-a3835ac9d23b.png', \"coverImageUrl\"='/uploads/4883c4b4-929d-420c-921e-a3835ac9d23b.png', published=true, \"publishedAt\"=COALESCE(\"publishedAt\",NOW()) WHERE slug='gpt-5-telegram-bot-biznes-2026';"
+            psql "$DATABASE_URL" -c "SELECT slug, LEFT(\"coverImage\",50), published FROM \"Article\";"
+            echo "Done!"
