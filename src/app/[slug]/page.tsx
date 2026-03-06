@@ -6,26 +6,28 @@ import type { Metadata } from "next";
 
 export const revalidate = 60;
 
+interface FaqItem { q: string; a: string }
+
 interface Props {
   params: Promise<{ slug: string }>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const article = await prisma.article.findFirst({
-    where: { slug, OR: [{ published: true }] },
-  });
+  const article = await prisma.article.findUnique({ where: { slug } });
   if (!article) return {};
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://multy.brewos.ru";
+  const desc = article.metaDescription ?? article.excerpt ?? undefined;
+  const image = article.coverImageUrl ?? article.coverImage ?? undefined;
 
   return {
     title: article.title,
-    description: article.excerpt ?? undefined,
+    description: desc,
     openGraph: {
       title: article.title,
-      description: article.excerpt ?? undefined,
-      images: article.coverImage ? [article.coverImage] : [],
+      description: desc,
+      images: image ? [image] : [],
       type: "article",
       publishedTime: article.publishedAt?.toISOString(),
       url: `${siteUrl}/${slug}`,
@@ -33,7 +35,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     twitter: {
       card: "summary_large_image",
       title: article.title,
-      description: article.excerpt ?? undefined,
+      description: desc,
+      images: image ? [image] : [],
     },
   };
 }
@@ -47,47 +50,71 @@ function formatDate(date: Date | null): string {
   }).format(new Date(date));
 }
 
-function readTime(content: string): string {
-  const words = content.trim().split(/\s+/).length;
-  const minutes = Math.max(1, Math.round(words / 200));
-  return `${minutes} мин чтения`;
+function calcReadingTime(content: string): number {
+  return Math.max(1, Math.round(content.trim().split(/\s+/).length / 200));
 }
 
 export default async function ArticlePage({ params }: Props) {
   const { slug } = await params;
-
-  // Fetch published OR unpublished (for preview)
   const article = await prisma.article.findUnique({ where: { slug } });
-
   if (!article) notFound();
 
   const html = await marked(article.content, { gfm: true, breaks: true });
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://multy.brewos.ru";
+  const coverImg = article.coverImageUrl ?? article.coverImage;
+  const desc = article.metaDescription ?? article.excerpt;
+  const readTime = article.readingTime ?? calcReadingTime(article.content);
+  const faqItems = (article.faqJson as FaqItem[] | null) ?? [];
+  const primaryTag = article.tags[0] ?? null;
 
-  const jsonLd = {
+  // JSON-LD: BlogPosting
+  const blogPostingLd = {
     "@context": "https://schema.org",
-    "@type": "Article",
+    "@type": "BlogPosting",
     headline: article.title,
-    description: article.excerpt,
-    image: article.coverImage,
+    description: desc,
+    image: coverImg,
     datePublished: article.publishedAt?.toISOString(),
     dateModified: article.updatedAt.toISOString(),
     url: `${siteUrl}/${slug}`,
+    timeRequired: `PT${readTime}M`,
     publisher: {
       "@type": "Organization",
       name: "Multy.ai",
       url: siteUrl,
+      logo: { "@type": "ImageObject", url: `${siteUrl}/logo.png` },
+    },
+    author: {
+      "@type": "Organization",
+      name: "Multy.ai",
     },
   };
+
+  // JSON-LD: FAQPage
+  const faqLd = faqItems.length > 0 ? {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqItems.map((f) => ({
+      "@type": "Question",
+      name: f.q,
+      acceptedAnswer: { "@type": "Answer", text: f.a },
+    })),
+  } : null;
 
   return (
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingLd) }}
       />
+      {faqLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }}
+        />
+      )}
 
-      {/* Back link */}
+      {/* Back */}
       <div className="mb-8">
         <Link
           href="/"
@@ -122,26 +149,41 @@ export default async function ArticlePage({ params }: Props) {
           {article.title}
         </h1>
 
-        {/* Meta */}
+        {/* Meta row: время чтения + дата + категория */}
         <div
-          className="flex items-center gap-3 text-sm text-gray-400 mb-8 pb-6 border-b border-gray-100"
+          className="flex flex-wrap items-center gap-3 text-sm text-gray-400 mb-8 pb-6 border-b border-gray-100"
           style={{ fontFamily: "Inter, system-ui, sans-serif" }}
         >
-          {article.publishedAt && <span>{formatDate(article.publishedAt)}</span>}
-          <span>·</span>
-          <span>{readTime(article.content)}</span>
+          <span className="flex items-center gap-1">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {readTime} мин чтения
+          </span>
+          {article.publishedAt && (
+            <>
+              <span>·</span>
+              <span>{formatDate(article.publishedAt)}</span>
+            </>
+          )}
+          {primaryTag && (
+            <>
+              <span>·</span>
+              <span className="text-[#2563EB]">{primaryTag}</span>
+            </>
+          )}
           {!article.published && (
-            <span className="ml-2 bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded font-medium">
+            <span className="ml-auto bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded font-medium">
               Черновик
             </span>
           )}
         </div>
 
         {/* Cover image */}
-        {article.coverImage && (
+        {coverImg && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={article.coverImage}
+            src={coverImg}
             alt={article.title}
             className="w-full rounded-xl mb-8 max-h-96 object-cover"
           />
@@ -150,22 +192,76 @@ export default async function ArticlePage({ params }: Props) {
         {/* Excerpt */}
         {article.excerpt && (
           <p
-            className="text-lg text-gray-600 leading-relaxed mb-8 font-medium border-l-4 border-[#2563EB] pl-4"
+            className="text-lg text-gray-600 leading-relaxed mb-8 border-l-4 border-[#2563EB] pl-4 italic"
             style={{ fontFamily: "Inter, system-ui, sans-serif" }}
           >
             {article.excerpt}
           </p>
         )}
 
-        {/* Content */}
-        <div
-          className="prose"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        {/* Table of Contents */}
+        {article.tocHtml && (
+          <div
+            className="bg-gray-50 rounded-xl p-5 mb-8 border border-gray-100"
+            style={{ fontFamily: "Inter, system-ui, sans-serif" }}
+          >
+            <p className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide text-xs">
+              Содержание
+            </p>
+            <div
+              className="toc text-sm text-gray-600 space-y-1"
+              dangerouslySetInnerHTML={{ __html: article.tocHtml }}
+            />
+          </div>
+        )}
 
-        {/* Footer CTA */}
-        <div className="mt-16 pt-8 border-t border-gray-100">
-          <div className="bg-blue-50 rounded-2xl p-6 text-center">
+        {/* Article content */}
+        <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />
+
+        {/* FAQ */}
+        {faqItems.length > 0 && (
+          <section className="mt-12 pt-8 border-t border-gray-100">
+            <h2
+              className="text-xl font-bold text-gray-900 mb-6"
+              style={{ fontFamily: "Inter, system-ui, sans-serif" }}
+            >
+              Часто задаваемые вопросы
+            </h2>
+            <div className="space-y-4">
+              {faqItems.map((item, i) => (
+                <details
+                  key={i}
+                  className="group border border-gray-100 rounded-xl overflow-hidden"
+                >
+                  <summary
+                    className="flex items-center justify-between p-4 cursor-pointer font-medium text-gray-900 hover:bg-gray-50 transition-colors list-none"
+                    style={{ fontFamily: "Inter, system-ui, sans-serif" }}
+                  >
+                    {item.q}
+                    <svg
+                      className="w-4 h-4 text-gray-400 group-open:rotate-180 transition-transform flex-shrink-0 ml-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </summary>
+                  <div
+                    className="px-4 pb-4 text-gray-600 leading-relaxed text-sm border-t border-gray-100 pt-3"
+                    style={{ fontFamily: "Inter, system-ui, sans-serif" }}
+                  >
+                    {item.a}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* CTA */}
+        <div className="mt-12 pt-8 border-t border-gray-100">
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 text-center">
             <p
               className="text-sm font-semibold text-[#2563EB] mb-1"
               style={{ fontFamily: "Inter, system-ui, sans-serif" }}
